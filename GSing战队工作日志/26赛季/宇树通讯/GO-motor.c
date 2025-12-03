@@ -6,6 +6,7 @@
  */
 #include "GO-motor.h"
 #include <string.h>
+#include <usart.h>
 
 #define SATURATE(_IN, _MIN, _MAX) \
 	{                             \
@@ -46,15 +47,8 @@ void extract_data(MotorBack *motor_r){
 		motor_r->correct = 0;
 		return;
 	}//正常工作
-	motor_r->calc_crc = crc_ccitt(0, (uint8_t *)&motor_r->motor_back_data, sizeof(RIS_BackData) - sizeof(motor_r->motor_back_data.CRC16));
-	if (motor_r->motor_back_data.CRC16 != motor_r->calc_crc)
-	{
-		memset(&motor_r->motor_back_data, 0, sizeof(RIS_BackData));
-		motor_r->correct = 0;
-		motor_r->bad_msg++;
-		return;
-	}
-	else
+	motor_r->calc_crc = crc_ccitt(0, (uint8_t *)&motor_r->motor_back_data, 14);
+	if (motor_r->motor_back_data.CRC16 == motor_r->calc_crc)
 	{
 		motor_r->motor_id = motor_r->motor_back_data.mode.id;
 		motor_r->mode = motor_r->motor_back_data.mode.status;
@@ -67,12 +61,19 @@ void extract_data(MotorBack *motor_r){
 		motor_r->correct = 1;
 		return;
 	}
+	else
+	{
+		memset(&motor_r->motor_back_data, 0, sizeof(RIS_BackData));
+		motor_r->correct = 0;
+		motor_r->bad_msg++;
+		return;
+	}
 }
 
 
 void MotorController_SetCommand(MotorCmd *motor_s, uint8_t motor_id, uint8_t mode, float torque, float speed, float position, float k_p, float k_w){
     if ( motor_id > MOTOR_NUM) return;
-
+    memset(motor_s, 0, sizeof(MotorCmd));//清空数据的一步
     motor_s->id = motor_id;
     motor_s->mode = mode;
     motor_s->T = torque;
@@ -94,7 +95,7 @@ void MotorController_SendCommand(UART_HandleTypeDef *huart, MotorCmd *motor_s){
     RS485_TxMode();
     // 启动DMA发送
     HAL_UART_Transmit_DMA(huart, (uint8_t*)&motor_s->motor_send_data, sizeof(motor_s->motor_send_data));
-
+	HAL_Delay(1);
 }
 
 
@@ -133,6 +134,7 @@ const uint16_t crc_ccitt_table[256] = {
 	0xf78f, 0xe606, 0xd49d, 0xc514, 0xb1ab, 0xa022, 0x92b9, 0x8330,
 	0x7bc7, 0x6a4e, 0x58d5, 0x495c, 0x3de3, 0x2c6a, 0x1ef1, 0x0f78
 };
+
 uint16_t crc_ccitt_byte(uint16_t crc, const uint8_t c)
 {
 	return (crc >> 8) ^ crc_ccitt_table[(crc ^ c) & 0xff];
@@ -145,3 +147,60 @@ uint16_t crc_ccitt(uint16_t crc, uint8_t const *buffer, size_t len)
 	return crc;
 }
 
+
+//在一切的校验后，将会进行记录的留存，这样就需要对应的结构体MotorInstance。接下来出场的是初始化和存数据函数
+// 初始化一个电机实例
+void MotorInstance_Init(MotorInstance* inst, int number) {
+    inst->number = number;
+	inst->motor_id = (uint8_t)number;
+    switch((number+3)/3){
+//      case 1:
+//    	  inst->huart = &huart1;
+//          break;
+      case 2:
+    	  inst->huart = &huart2;
+          break;
+//      case 3:
+//    	  inst->huart = &huart3;
+//          break;
+//      case 4:
+//    	  inst->huart = &huart4;
+//          break;
+          //之所以进行部分的注释是因为我的板子还没开huart1、3、4，编译会错误，所有就注释一下吧
+    }
+    inst->now_T = 0.0f;
+    inst->now_W = 0.0f;
+    inst->now_Pos = 0.0f;
+    inst->write_index = 0;
+    inst->count = 0;
+    inst->numb_updates = 0;
+
+    // 可选：清零历史数组（通常不是必须，但更干净）
+    for (int i = 0; i < MOTOR_HISTORY; i++) {
+        inst->history_T[i] = 0.0f;
+        inst->history_W[i] = 0.0f;
+        inst->history_Pos[i] = 0.0f;
+    }
+}
+
+
+// 更新最新数据，并存入历史环形缓冲区
+void MotorInstance_Update(MotorInstance* inst, float T, float W, float Pos) {
+    // 更新当前值
+    inst->now_T = T;
+    inst->now_W = W;
+    inst->now_Pos = Pos;
+
+    // 写入历史
+    inst->history_T[inst->write_index] = T;
+    inst->history_W[inst->write_index] = W;
+    inst->history_Pos[inst->write_index] = Pos;
+
+    // 更新索引和计数
+    inst->write_index = (inst->write_index + 1) % MOTOR_HISTORY;
+    if (inst->count < MOTOR_HISTORY) {
+        inst->count++;
+    }
+
+    inst->numb_updates++;
+}

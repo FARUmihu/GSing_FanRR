@@ -12,8 +12,9 @@
 #include "stm32h7xx_hal.h"
 
 //配置参数
-#define MOTOR_NUM         8      // 电机数量
-#define CMD_TIMEOUT_MS    10      // 指令发送超时时间
+#define MOTOR_NUM         12       // 电机数量
+//#define CMD_TIMEOUT_MS    10      // 指令发送超时时间，，好像没用上，再没用上就给删掉
+#define MOTOR_HISTORY 20          // 选择记录存储电机反馈的次数：20次记录
 
 //结构体大军：
 //RIS_Mode  码，模式
@@ -129,6 +130,34 @@ void MotorController_SetCommand(MotorCmd *motor_s,
                               float k_p,
                               float k_w);
 
+//存所用宇树电机回传的数据仓库结构体，用串口和id来进行分组
+// 电机实例结构体：每个串口上的每个电机一个实例
+typedef struct {
+	int number;                          //这个结构体的序号，一般与电机的id一一匹配，id为0，number就为0
+    uint8_t motor_id;                    // 电机ID (0~11)
+    UART_HandleTypeDef *huart;           // 所属串口句柄指针，计算的方法就是[number+3]/3
+
+    // 当前最新值（方便快速访问）
+    float now_T;                         // 当前力矩 (Nm)
+    float now_W;                         // 当前速度 (rad/s)
+    float now_Pos;                       // 当前位置
+
+    // 历史记录（环形缓冲区）
+    float history_T[MOTOR_HISTORY];  // 力矩历史
+    float history_W[MOTOR_HISTORY];  // 速度历史
+    float history_Pos[MOTOR_HISTORY]; // 位置历史
+
+    uint8_t write_index;                 // 下一次写入的位置索引 (0~19)
+    uint8_t count;                       // 当前已存入的有效数据点数量（<=20）
+    uint32_t numb_updates;               // 总更新次数（用于调试或统计）
+} MotorInstance;
+
+//辅助函数,初始化一个电机实例
+void MotorInstance_Init(MotorInstance* inst, int number);
+
+// 更新最新数据，并存入历史环形缓冲区
+void MotorInstance_Update(MotorInstance* inst, float T, float W, float Pos);
+
 
 // 发送单个电机指令
 void MotorController_SendCommand(UART_HandleTypeDef *huart,
@@ -136,7 +165,9 @@ void MotorController_SendCommand(UART_HandleTypeDef *huart,
 
 //单字节 CRC 更新函数
 uint16_t crc_ccitt_byte(uint16_t crc, const uint8_t c);
+
 //CRC 计算
 uint16_t crc_ccitt(uint16_t crc, uint8_t const *buffer, size_t len);
+
 #endif /* INC_GO_MOTOR_H_ */
 
