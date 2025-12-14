@@ -24,6 +24,7 @@
 //RIS_BackData    码，返回数据结构，有包头、模式、数据以及CRC
 //MotorCmd  用户可用函数，发
 //MotorBack 用户可用函数，收
+
 //模式控制信息
 #pragma pack(1)             //最大对齐 1Byte，就不进行自动对齐了
 
@@ -130,7 +131,7 @@ void MotorController_SetCommand(MotorCmd *motor_s,
                               float k_p,
                               float k_w);
 
-//存所用宇树电机回传的数据仓库结构体，用串口和id来进行分组
+//存所用宇树电机回传的数据仓库结构体，用串口和id来进行分组,其实只用了id。。。串口是陪同的
 // 电机实例结构体：每个串口上的每个电机一个实例
 typedef struct {
 	int number;                          //这个结构体的序号，一般与电机的id一一匹配，id为0，number就为0
