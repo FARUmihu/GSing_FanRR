@@ -10,10 +10,9 @@ extern FDCAN_HandleTypeDef hfdcan1;
 extern FDCAN_HandleTypeDef hfdcan2;
 
 /* 全局变量定义 */
-motor_measure_t motor_3508_can1[8] = {0};
-motor_measure_t motor_3508_can2[8] = {0};
+motor_measure_t motor_3508_can[8] = {0};//现在是can1，can2共用motor_3508_can[8]，不过彼此按标号分清，id=0，1，2是can1；id=3，4，5是can2；
 
-static Motor_3508_Instance motor_3508_instance[MOTOR_3508_number];
+Motor_3508_Instance motor_3508_instance[MOTOR_3508_number];
 /* 发送相关变量 */
 static FDCAN_TxHeaderTypeDef CAN_Tx1Message;
 static FDCAN_TxHeaderTypeDef CAN_Tx2Message;
@@ -84,28 +83,18 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
             case CAN_3508_M8_ID:
             {
                 uint8_t i = rx_header.Identifier - CAN_3508_M1_ID;//这对吗？电机的标号到底是1~8还是0~7？好的，解决了，id是0~7
-                motor_measure_t  *motor_array;
-
-                /* 确定CAN总线 */
-                if (hfdcan == &hfdcan1) {
-                    motor_array = motor_3508_can1;
-                } else {
-                    motor_array = motor_3508_can2;
-                }
 
                 /* 前50条消息用于校准，之后正常处理 */
-                if (motor_array[i].msg_cnt <= 50) {
-                	//一个替代函数版
-                	if(motor_array[i].msg_cnt == 50){
-                		motor_array[i].ecd = (uint16_t)(rx_data[0] << 8 | rx_data[1]);
-                		motor_array[i].offset_ecd = (uint16_t)(rx_data[0] << 8 | rx_data[1]);
+                if (motor_3508_can[i].msg_cnt <= 50) {
+                	if(motor_3508_can[i].msg_cnt == 50){
+                		motor_3508_can[i].ecd = (uint16_t)(rx_data[0] << 8 | rx_data[1]);
+                		motor_3508_can[i].offset_ecd = (uint16_t)(rx_data[0] << 8 | rx_data[1]);
                 	}
-//                    get_moto_offset(&motor_array[i], (uint16_t)(rx_data[0] << 8 | rx_data[1]));//用了get_moto_offset函数的情况，可以注释掉测试一下能否去掉
                 } else {
-                    get_moto_measure(&motor_array[i], rx_data);
-                    Motor_3508_Instance_Update(&motor_3508_instance[i], motor_array[i].real_current, motor_array[i].speed_rpm, motor_array[i].total_angle, motor_array[i].temperate);
+                    get_moto_measure(&motor_3508_can[i], rx_data);
+                    Motor_3508_Instance_Update(&motor_3508_instance[i], motor_3508_can[i].real_current, motor_3508_can[i].speed_rpm, motor_3508_can[i].total_angle, motor_3508_can[i].temperate);
                 }
-                motor_array[i].msg_cnt++;
+                motor_3508_can[i].msg_cnt++;
 
                 break;
             }
@@ -129,27 +118,13 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
   *******************************************************************************************/
 void get_moto_measure(motor_measure_t *ptr, uint8_t *data)
 {
-	//真的废物啊，这点滤波数据一点儿没派上用场，先注释掉，测试成功还没用上就给删了
-//    uint32_t i, sum = 0;
-//    uint16_t current_ecd;
-
-//    /* 编码器值滤波处理 */
-//    current_ecd = (uint16_t)(data[0] << 8 | data[1]);
-//    ptr->ecd_buf[ptr->buf_idx] = current_ecd;
-//    ptr->buf_idx = (ptr->buf_idx + 1) % FILTER_BUF_LEN;
-//
-//    /* 计算滤波后的编码器值 */
-//    for (i = 0; i < FILTER_BUF_LEN; i++) {
-//        sum += ptr->ecd_buf[i];
-//    }
-//    ptr->filtered_ecd = sum / FILTER_BUF_LEN;
 
     /* 保存上次编码器值 */
     ptr->last_ecd = ptr->ecd;
 
     /* 修正：3508电机协议数据解析 */
     ptr->ecd = (uint16_t)(data[0] << 8 | data[1]);        // 编码器值 (0-8191)
-    ptr->speed_rpm = (int16_t)(data[2] << 8 | data[3]);   // 转速 RPM
+    ptr->speed_rpm = (int16_t)((data[2] << 8 | data[3]) < 10000 ? ((int16_t)(data[2] << 8 | data[3])) : (((int16_t)(data[2] << 8 | data[3])) - 65535));   // 转速 RPM
     ptr->real_current = (int16_t)(data[4] << 8 | data[5]);// 实际电流
     ptr->temperate = data[6];                           // 温度
 
@@ -176,18 +151,6 @@ void get_moto_measure(motor_measure_t *ptr, uint8_t *data)
         ptr->round_cnt = ptr->total_angle / 8192;
     }
 }
-
-///*******************************************************************************************
-//  * @Func		get_moto_offset
-//  * @Brief    电机偏移校准
-//  *******************************************************************************************/
-//void get_moto_offset(motor_measure_t *ptr, uint16_t current_ecd)
-//{
-//    ptr->ecd = current_ecd;
-//    ptr->offset_ecd = current_ecd;
-//    ptr->total_angle = 0;
-//    ptr->round_cnt = 0;
-//}
 
 /*******************************************************************************************
   * @Func		set_moto_current_can1
@@ -248,23 +211,6 @@ void set_moto_current_can2(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4)
     }
 }
 
-/*******************************************************************************************
-  * @Func		get_moto_3508_ptr
-  * @Brief    获取指定电机指针
-  *******************************************************************************************/
-motor_measure_t* get_moto_3508_ptr(uint8_t can_bus, uint8_t motor_id)
-{
-    if (motor_id >= 8) {
-        motor_id = 0;
-    }
-
-    if (can_bus == 0) {
-        return &motor_3508_can1[motor_id];
-    } else {
-        return &motor_3508_can2[motor_id];
-    }
-}
-
 //在一切的校验后，将会进行记录的留存，这样就需要对应的结构体MotorInstance。接下来出场的是初始化和存数据函数
 // 初始化一个电机实例
 void Motor_3508_Instance_Init(Motor_3508_Instance* inst, int number) {
@@ -280,15 +226,16 @@ void Motor_3508_Instance_Init(Motor_3508_Instance* inst, int number) {
 
     // 可选：清零历史数组（通常不是必须，但更干净）
     for (int i = 0; i < MOTOR_HISTORY; i++) {
-        inst->history_T[i] = 0.0f;
+        inst->history_A[i] = 0.0f;
         inst->history_W[i] = 0.0f;
         inst->history_Pos[i] = 0.0f;
+        inst->history_Temp[i] = 0.0f;
     }
 }
 
 
 // 更新最新数据，并存入历史环形缓冲区
-void Motor_3508_Instance_Update(Motor_3508_Instance* inst, uint16_t A, uint16_t W, uint32_t Pos, uint8_t Temp) {
+void Motor_3508_Instance_Update(Motor_3508_Instance* inst, int16_t A, int16_t W, int32_t Pos, uint8_t Temp) {
     // 更新当前值
     inst->now_A = A;
     inst->now_W = W;
@@ -299,7 +246,7 @@ void Motor_3508_Instance_Update(Motor_3508_Instance* inst, uint16_t A, uint16_t 
     inst->round_cnt = inst->now_Pos / 8192;
 
     // 写入历史
-    inst->history_T[inst->write_index] = A;
+    inst->history_A[inst->write_index] = A;
     inst->history_W[inst->write_index] = W;
     inst->history_Pos[inst->write_index] = Pos;
     inst->history_Temp[inst->write_index] = Temp;
@@ -310,3 +257,5 @@ void Motor_3508_Instance_Update(Motor_3508_Instance* inst, uint16_t A, uint16_t 
         inst->count++;
     }
 }
+
+

@@ -25,16 +25,14 @@ typedef struct
     uint8_t motor_id;                    // 电机ID (0~3)因为是3508当轮毂电机嘛
 
     // 当前最新值（方便快速访问）
-    uint32_t now_Pos;                       // 当前位置 - 来自Data[0-1]的计算增量累加结果
-    uint16_t now_W;                         // 当前速度 (rad/min) - 来自Data[2-3]
-    uint16_t now_A;                         // 当前电流 (A) - 来自Data[4-5]
-
-    //相对于
+    int32_t now_Pos;                       // 当前位置 - 来自Data[0-1]的计算增量累加结果
+    int16_t now_W;                         // 当前速度 (rad/min) - 来自Data[2-3]
+    int16_t now_A;                         // 当前电流 (A) - 来自Data[4-5]
     uint8_t now_temp;          		   		// 温度 - 来自Data[6]
-    int16_t   round_cnt;                    // 圈数计数
+    int16_t round_cnt;                    // 圈数计数
 
     // 历史记录（环形缓冲区）
-    float history_T[MOTOR_HISTORY];  // 力矩历史
+    float history_A[MOTOR_HISTORY];  // 力矩历史
     float history_W[MOTOR_HISTORY];  // 速度历史
     float history_Pos[MOTOR_HISTORY]; // 位置历史
     float history_Temp[MOTOR_HISTORY]; // 温度历史
@@ -58,8 +56,6 @@ typedef enum
     CAN_3508_M8_ID      = 0x208,  // 3508电机8反馈ID
 } can_msg_id;
 
-#define FILTER_BUF_LEN  5
-
 //接收到的3508电机参数结构体
 typedef struct
 {
@@ -78,27 +74,18 @@ typedef struct
     int32_t   total_angle;        // 总角度（相对初始位置）
     int16_t   round_cnt;          // 圈数计数
 
-	//真的废物啊，这点滤波数据一点儿没派上用场，先注释掉，测试成功还没用上就给删了
-//    /* 滤波相关 */
-//    uint8_t   buf_idx;
-//    uint16_t  ecd_buf[FILTER_BUF_LEN];
-//    uint16_t  filtered_ecd;
-
     /* 统计计数 */
     uint32_t  msg_cnt;            // 消息计数
 } motor_measure_t;
 
-extern motor_measure_t motor_3508_can1[8];  // CAN1上的3508电机
-extern motor_measure_t motor_3508_can2[8];  // CAN2上的3508电机
+extern motor_measure_t motor_3508_can[8];  // CAN1上的3508电机
 
 void my_can_filter_init_recv_all(void);
 void get_moto_measure(motor_measure_t *ptr, uint8_t* data);
-//void get_moto_offset(motor_measure_t *ptr, uint16_t current_ecd);//一个校正电机回传的数据的辅助函数，斯认为可以不要，先试试吧。
-void set_moto_current_can1(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4);
-void set_moto_current_can2(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4);
-motor_measure_t* get_moto_3508_ptr(uint8_t can_bus, uint8_t motor_id);
+void set_moto_current_can1(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4);//发送can1上控制四个电机电流的指令，无PID版本
+void set_moto_current_can2(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4);//发送can2上控制四个电机电流的指令，无PID版本
 
 //用于布置回传存储的函数
 void Motor_3508_Instance_Init(Motor_3508_Instance* inst, int number);
-void Motor_3508_Instance_Update(Motor_3508_Instance* inst, uint16_t now_A, uint16_t W, uint32_t Pos, uint8_t Temp);
+void Motor_3508_Instance_Update(Motor_3508_Instance* inst, int16_t now_A, int16_t W, int32_t Pos, uint8_t Temp);
 #endif /* INC_M3508_H_ */
