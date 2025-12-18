@@ -10,7 +10,7 @@ extern FDCAN_HandleTypeDef hfdcan1;
 extern FDCAN_HandleTypeDef hfdcan2;
 
 /* 全局变量定义 */
-motor_measure_t motor_3508_can[8] = {0};//现在是can1，can2共用motor_3508_can[8]，不过彼此按标号分清，id=0，1，2是can1；id=3，4，5是can2；
+motor_measure_t motor_3508_can[8] = {0};//现在是can1，can2共用motor_3508_can[8]，不过彼此按标号分清，id=0，1，2，3是can1；id=4，5，6，7是can2；
 
 Motor_3508_Instance motor_3508_instance[MOTOR_3508_number];
 /* 发送相关变量 */
@@ -161,7 +161,7 @@ void set_moto_current_can1(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4)
     HAL_StatusTypeDef status;
 
     /* 只发一帧：控制4个电机 (ID: 0x200) */
-    CAN_Tx1Message.Identifier = CAN_3508_ALL_ID;
+    CAN_Tx1Message.Identifier = CAN_3508_CAN1_ID;
     CAN_Tx1Message.IdType = FDCAN_STANDARD_ID;
     CAN_Tx1Message.TxFrameType = FDCAN_DATA_FRAME;
     CAN_Tx1Message.DataLength = FDCAN_DLC_BYTES_8;
@@ -190,8 +190,8 @@ void set_moto_current_can2(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4)
 {
     HAL_StatusTypeDef status;
 
-    /* 只发一帧：控制4个电机 (ID: 0x200) */
-    CAN_Tx2Message.Identifier = CAN_3508_ALL_ID;
+    /* 只发一帧：控制4个电机 (识别符：0x1FF) */
+    CAN_Tx2Message.Identifier = CAN_3508_CAN2_ID;
     CAN_Tx2Message.IdType = FDCAN_STANDARD_ID;
     CAN_Tx2Message.TxFrameType = FDCAN_DATA_FRAME;
     CAN_Tx2Message.DataLength = FDCAN_DLC_BYTES_8;
@@ -258,4 +258,4 @@ void Motor_3508_Instance_Update(Motor_3508_Instance* inst, int16_t A, int16_t W,
     }
 }
 
-
+//好了，开始进行PID控速了，为了方便且统一，这里用到PID控速是使用了许堃写的PID.c/.h

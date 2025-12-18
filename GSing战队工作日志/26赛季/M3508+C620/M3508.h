@@ -42,10 +42,11 @@ typedef struct
     uint32_t numb_updates;               // 总更新次数（用于调试或统计）
 } Motor_3508_Instance;
 
-//CAN发送或是接收的ID，一个枚举整型，注定了一条CAN最多挂载8个电机
+//CAN发送或是接收的ID，一个枚举整型
 typedef enum
 {
-    CAN_3508_ALL_ID     = 0x200,  // 3508电机控制ID
+    CAN_3508_CAN1_ID    = 0x200,  // 3508电机控制ID，也是电调1~4，电机0~3的发送帧的识别符
+	CAN_3508_CAN2_ID    = 0x1FF,  // 3508电机控制ID，也是电调5~8，电机4~7的发送帧的识别符
     CAN_3508_M1_ID      = 0x201,  // 3508电机1反馈ID
     CAN_3508_M2_ID      = 0x202,  // 3508电机2反馈ID
     CAN_3508_M3_ID      = 0x203,  // 3508电机3反馈ID
@@ -84,6 +85,10 @@ void my_can_filter_init_recv_all(void);
 void get_moto_measure(motor_measure_t *ptr, uint8_t* data);
 void set_moto_current_can1(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4);//发送can1上控制四个电机电流的指令，无PID版本
 void set_moto_current_can2(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4);//发送can2上控制四个电机电流的指令，无PID版本
+
+//带上PID进行电机控制的版本
+void PID_M3508_CAN1(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4);
+void PID_M3508_CAN2(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4);
 
 //用于布置回传存储的函数
 void Motor_3508_Instance_Init(Motor_3508_Instance* inst, int number);
