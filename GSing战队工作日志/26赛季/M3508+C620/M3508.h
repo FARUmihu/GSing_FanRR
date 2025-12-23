@@ -87,7 +87,8 @@ void set_moto_current_can1(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4);/
 void set_moto_current_can2(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4);//发送can2上控制四个电机电流的指令，无PID版本
 
 //带上PID进行电机控制的版本
-void PID_M3508_CAN1(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4);
+void PID_M3508_CAN_Init(void);
+void PID_M3508_CAN1(int16_t target_rpm1, int16_t target_rpm2, int16_t target_rpm3, int16_t target_rpm4);
 void PID_M3508_CAN2(int16_t iq1, int16_t iq2, int16_t iq3, int16_t iq4);
 
 //用于布置回传存储的函数

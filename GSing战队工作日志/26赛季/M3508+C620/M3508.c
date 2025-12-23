@@ -5,14 +5,18 @@
  *      Author: FMI
  */
 #include "M3508.h"
-
+#include "pid.h"
 extern FDCAN_HandleTypeDef hfdcan1;
 extern FDCAN_HandleTypeDef hfdcan2;
 
+
 /* 全局变量定义 */
 motor_measure_t motor_3508_can[8] = {0};//现在是can1，can2共用motor_3508_can[8]，不过彼此按标号分清，id=0，1，2，3是can1；id=4，5，6，7是can2；
+Motor_3508_Instance motor_3508_instance[MOTOR_3508_number];//8个电机的回传数据中间存储结构体
 
-Motor_3508_Instance motor_3508_instance[MOTOR_3508_number];
+/*pid相关参数变量*/
+static PID_Controller pid_can[MOTOR_3508_number]; //MOTOR_3508_number 8个电机的 PID 控制器
+
 /* 发送相关变量 */
 static FDCAN_TxHeaderTypeDef CAN_Tx1Message;
 static FDCAN_TxHeaderTypeDef CAN_Tx2Message;
@@ -259,3 +263,75 @@ void Motor_3508_Instance_Update(Motor_3508_Instance* inst, int16_t A, int16_t W,
 }
 
 //好了，开始进行PID控速了，为了方便且统一，这里用到PID控速是使用了许堃写的PID.c/.h
+//初始化函数
+void PID_M3508_CAN_Init(void) {
+
+    // 保守安全参数（适用于大多数轮腿机器人）
+    float Kp = 10.0f;   //
+    float Ki = 0.3f;    //
+    float Kd = 0.0f;    // 保持为 0
+
+    // 输出限幅
+    float output_max = 12000.0f;  // 初始限制电流，防过冲
+    float output_min = -12000.0f;
+    float integral_max = 500.0f;
+    float integral_min = -500.0f;
+
+    for (int i = 0; i < 8; i++) {
+        PID_Init(&pid_can[i], Kp, Ki, Kd, output_max, output_min, integral_max, integral_min);
+    }
+}
+
+//速度环can1
+void PID_M3508_CAN1(int16_t target_rpm1, int16_t target_rpm2, int16_t target_rpm3, int16_t target_rpm4) {
+//    static uint32_t last_time = 0;
+    uint32_t current_time = HAL_GetTick();
+
+    // 获取实际转速（来自 CAN 反馈）
+    int16_t actual_rpm1 = motor_3508_can[0].speed_rpm;
+    int16_t actual_rpm2 = motor_3508_can[1].speed_rpm;
+    int16_t actual_rpm3 = motor_3508_can[2].speed_rpm;
+    int16_t actual_rpm4 = motor_3508_can[3].speed_rpm;
+
+    // 使用 PID 计算应输出的电流指令（单位：int16_t）
+    float iq1 = PID_Update(&pid_can[0], (float)(target_rpm1 * 3599 / 187), (float)actual_rpm1, current_time);
+    float iq2 = PID_Update(&pid_can[1], (float)(target_rpm2 * 3599 / 187), (float)actual_rpm2, current_time);
+    float iq3 = PID_Update(&pid_can[2], (float)(target_rpm3 * 3599 / 187), (float)actual_rpm3, current_time);
+    float iq4 = PID_Update(&pid_can[3], (float)(target_rpm4 * 3599 / 187), (float)actual_rpm4, current_time);
+
+    // 限幅（确保在 ±16384 范围内）
+    iq1 = fmaxf(fminf(iq1, 16384.0f), -16384.0f);
+    iq2 = fmaxf(fminf(iq2, 16384.0f), -16384.0f);
+    iq3 = fmaxf(fminf(iq3, 16384.0f), -16384.0f);
+    iq4 = fmaxf(fminf(iq4, 16384.0f), -16384.0f);
+
+    // 转换为 int16_t 并发送到 CAN
+    set_moto_current_can1((int16_t)iq1, (int16_t)iq2, (int16_t)iq3, (int16_t)iq4);
+}
+
+//速度环can2
+void PID_M3508_CAN2(int16_t target_rpm1, int16_t target_rpm2, int16_t target_rpm3, int16_t target_rpm4) {
+//    static uint32_t last_time = 0;
+    uint32_t current_time = HAL_GetTick();
+
+    // 获取实际转速（来自 CAN 反馈）
+    int16_t actual_rpm1 = motor_3508_can[0].speed_rpm;
+    int16_t actual_rpm2 = motor_3508_can[1].speed_rpm;
+    int16_t actual_rpm3 = motor_3508_can[2].speed_rpm;
+    int16_t actual_rpm4 = motor_3508_can[3].speed_rpm;
+
+    // 使用 PID 计算应输出的电流指令（单位：int16_t）
+    float iq1 = PID_Update(&pid_can[4], (float)(target_rpm1 * 3599 / 187), (float)actual_rpm1, current_time);
+    float iq2 = PID_Update(&pid_can[5], (float)(target_rpm2 * 3599 / 187), (float)actual_rpm2, current_time);
+    float iq3 = PID_Update(&pid_can[6], (float)(target_rpm3 * 3599 / 187), (float)actual_rpm3, current_time);
+    float iq4 = PID_Update(&pid_can[7], (float)(target_rpm4 * 3599 / 187), (float)actual_rpm4, current_time);
+
+    // 限幅（确保在 ±16384 范围内）
+    iq1 = fmaxf(fminf(iq1, 16384.0f), -16384.0f);
+    iq2 = fmaxf(fminf(iq2, 16384.0f), -16384.0f);
+    iq3 = fmaxf(fminf(iq3, 16384.0f), -16384.0f);
+    iq4 = fmaxf(fminf(iq4, 16384.0f), -16384.0f);
+
+    // 转换为 int16_t 并发送到 CAN
+    set_moto_current_can2((int16_t)iq1, (int16_t)iq2, (int16_t)iq3, (int16_t)iq4);
+}
